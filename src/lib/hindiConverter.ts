@@ -6,13 +6,13 @@ export const detectFontEncoding = (fontName: string): FontEncoding => {
   if (!fontName) return 'unicode';
   const lowerName = fontName.toLowerCase();
   
-  if (lowerName.includes('kruti') || lowerName.includes('k10') || lowerName.includes('devlys')) {
+  if (lowerName.includes('kruti') || lowerName.includes('k10') || lowerName.includes('k0') || lowerName.includes('devlys')) {
     return 'krutidev';
   }
-  if (lowerName.includes('shree') || lowerName.includes('sri')) {
+  if (lowerName.includes('shree') || lowerName.includes('sri') || lowerName.startsWith('sl')) {
     return 'shreelipi';
   }
-  if (lowerName.includes('chanakya') || lowerName.includes('walkman')) {
+  if (lowerName.includes('chanakya') || lowerName.includes('walkman') || lowerName.includes('chan')) {
     return 'legacy';
   }
   

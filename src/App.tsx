@@ -37,8 +37,23 @@ export default function App() {
               }
             `;
 
+            // Force browser to load the font by adding it to a hidden element
+            const hiddenLoader = document.createElement('div');
+            hiddenLoader.style.fontFamily = `"${font.name}"`;
+            hiddenLoader.style.position = 'absolute';
+            hiddenLoader.style.top = '-9999px';
+            hiddenLoader.style.left = '-9999px';
+            hiddenLoader.innerText = 'Font Load Test';
+            document.body.appendChild(hiddenLoader);
+
             // Silently load
-            document.fonts.load(`1em "${font.name}"`).catch(() => {});
+            document.fonts.load(`1em "${font.name}"`).finally(() => {
+              setTimeout(() => {
+                if (document.body.contains(hiddenLoader)) {
+                  document.body.removeChild(hiddenLoader);
+                }
+              }, 2000);
+            });
           } catch (err) {
             console.error(`Failed to inject font ${font.name} on startup:`, err);
           }

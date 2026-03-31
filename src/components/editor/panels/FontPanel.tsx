@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
-import { saveFont, getFonts, deleteFont } from '../../../lib/db';
+import { saveFont, getFonts, deleteFont, type CustomFont } from '../../../lib/db';
 import { Upload, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -58,13 +58,15 @@ export default function FontPanel() {
           }
         `;
 
-        // Step 3: Wait for browser to recognize the font
+        // Step 3: Wait for browser to recognize the font (optional, but good for feedback)
         console.log('Waiting for font to load via CSS...');
-        await document.fonts.load(`1em "${fontName}"`);
+        try {
+          await document.fonts.load(`1em "${fontName}"`);
+          console.log('Font injection confirmed');
+        } catch (loadErr) {
+          console.warn('Font confirmed in CSS but load promise failed. Proceeding anyway.', loadErr);
+        }
         
-        // Even if .load() fails, we'll try to proceed as CSS injection is often silent
-        console.log('Font injection complete');
-
         const newFont = {
           id: uuidv4(),
           name: fontName,
@@ -83,7 +85,7 @@ export default function FontPanel() {
         URL.revokeObjectURL(fontUrl);
         
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        alert(`Font Load Failed: ${errorMessage}\n\nYour mobile browser is blocking this font's data. \n\nTry this: \n1. Open your Vercel site in "Incognito/Private" mode.\n2. Try a different browser like Firefox.\n3. If you are using a very old Shree Lipi font, try a different version of it.`);
+        alert(`Font Load Failed: ${errorMessage}\n\nThis is a BROWSER security restriction. \n\nSolution:\n1. Open your site in "Incognito/Private" mode.\n2. Use Firefox browser (it's better for fonts).\n3. If you're on Chrome, try "Desktop Site" mode.`);
       }
 
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -91,17 +93,25 @@ export default function FontPanel() {
     reader.readAsArrayBuffer(file);
   };
 
-  const applyFont = (fontName: string) => {
+  const applyFont = (font: CustomFont | string) => {
     if (!canvas || !activeObject || activeObject.type !== 'i-text') return;
     const textObj = activeObject as any;
     
-    // Clean and add quotes if fontName has spaces to ensure fabric.js handles it correctly
+    const fontName = typeof font === 'string' ? font : font.name;
+    const displayName = typeof font === 'string' ? font : (font.displayName || font.name);
+    
+    console.log('Applying font:', displayName, 'Internal name:', fontName);
+    
+    // Always use quotes for custom fonts to ensure consistency with CSS @font-face
     const cleanFontName = fontName.replace(/['"]/g, '');
-    const formattedFontName = cleanFontName.includes(' ') ? `"${cleanFontName}"` : cleanFontName;
+    const formattedFontName = `"${cleanFontName}"`;
+    
     textObj.set('fontFamily', formattedFontName);
     
     import('../../../lib/hindiConverter').then(({ detectFontEncoding, convertToLegacy }) => {
-      const encoding = detectFontEncoding(fontName);
+      // Use displayName for encoding detection, not the random internal name
+      const encoding = detectFontEncoding(displayName);
+      console.log('Detected encoding for', displayName, ':', encoding);
       textObj.set('fontEncoding', encoding);
       
       const currentUnicodeText = textObj.unicodeText || textObj.text;
@@ -116,15 +126,37 @@ export default function FontPanel() {
       canvas.requestRenderAll();
       
       // Ensure canvas re-renders after font is fully ready
-      document.fonts.load(`1em "${cleanFontName}"`).then(() => {
+      // We try multiple times to handle slow loading on mobile
+      const redraw = () => {
         textObj.dirty = true;
+        if (textObj.initDimensions) textObj.initDimensions();
         canvas.requestRenderAll();
+      };
+
+      // Force browser to load the font by adding it to a hidden element
+      const hiddenLoader = document.createElement('div');
+      hiddenLoader.style.fontFamily = formattedFontName;
+      hiddenLoader.style.position = 'absolute';
+      hiddenLoader.style.top = '-9999px';
+      hiddenLoader.style.left = '-9999px';
+      hiddenLoader.innerText = 'Font Load Test';
+      document.body.appendChild(hiddenLoader);
+
+      document.fonts.load(`1em ${formattedFontName}`).then(() => {
+        redraw();
+        // Second redraw after a short delay for safety
+        setTimeout(redraw, 100);
+        setTimeout(redraw, 300);
+        setTimeout(() => document.body.removeChild(hiddenLoader), 1000);
       }).catch(err => {
         console.warn('Font load warning:', err);
-        // Fallback render
-        textObj.dirty = true;
-        canvas.requestRenderAll();
+        redraw();
+        setTimeout(() => document.body.removeChild(hiddenLoader), 1000);
       });
+      
+      // Immediate redraws
+      redraw();
+      setTimeout(redraw, 50);
       
       // Update the active object in the store to trigger a re-render of the UI
       useAppStore.setState({ activeObject: null });
@@ -137,7 +169,7 @@ export default function FontPanel() {
   return (
     <div className="bg-zinc-900 border-t border-zinc-800 p-4 max-h-64 overflow-y-auto">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-zinc-300">Fonts</h3>
+        <h3 className="text-sm font-medium text-zinc-300">Fonts <span className="text-[10px] opacity-20 ml-1">v1.6</span></h3>
         <button 
           onClick={() => fileInputRef.current?.click()}
           className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg text-xs font-medium hover:bg-indigo-500/20"
@@ -155,7 +187,7 @@ export default function FontPanel() {
               {customFonts.map(font => (
                 <div key={font.id} className="relative group">
                   <button 
-                    onClick={() => applyFont(font.name)}
+                    onClick={() => applyFont(font)}
                     className="w-full p-3 bg-zinc-800/50 rounded-xl text-left hover:bg-zinc-800 transition-colors"
                     style={{ fontFamily: `"${font.name}"` }}
                   >
